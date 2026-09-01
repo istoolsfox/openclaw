@@ -200,7 +200,8 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +1: diagnostic flag checks without event, trace, or redaction initialization.
       // +1: restore the shipped read-only conversation-binding inspection facade.
       // +1: canonical node CLI owners for plugin-provided node commands.
-      149,
+      // +3: typed feature contracts, backend registration, and native Control UI hosting.
+      152,
       env,
     ),
     publicExports: readPluginSdkSurfaceBudgetEnv(
@@ -341,7 +342,9 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +1: canonical temporal context renderer for plugin-owned agent harnesses.
       // +1: canonical user-turn operational metadata restoration for native harnesses.
       // +2: owner-selected channel groups and their authored config path for safe recovery hints.
-      4373,
+      // +44: feature operation/client and native Control UI contribution/host contracts.
+      // +1: explicit native page history and query preservation options.
+      4418,
       env,
     ),
     publicFunctionExports: readPluginSdkSurfaceBudgetEnv(
@@ -457,7 +460,8 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +1: canonical temporal context renderer for plugin-owned agent harnesses.
       // +1: canonical user-turn operational metadata restoration for native harnesses.
       // +2: owner-selected channel groups and their authored config path for safe recovery hints.
-      2607,
+      // +4: defineFeatureContract, createFeatureClient, defineFeaturePlugin, defineControlUiPlugin.
+      2611,
       env,
     ),
     publicDeprecatedExports: readPluginSdkSurfaceBudgetEnv(
