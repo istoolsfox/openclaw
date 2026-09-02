@@ -345,7 +345,8 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +44: feature operation/client and native Control UI contribution/host contracts.
       // +1: explicit native page history and query preservation options.
       // +4: observed session query, result, snapshot, and subscription contracts.
-      4422,
+      // +2: browser-safe Date timestamp validation and UTF-16 truncation primitives.
+      4424,
       env,
     ),
     publicFunctionExports: readPluginSdkSurfaceBudgetEnv(
@@ -462,7 +463,8 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +1: canonical user-turn operational metadata restoration for native harnesses.
       // +2: owner-selected channel groups and their authored config path for safe recovery hints.
       // +4: defineFeatureContract, createFeatureClient, defineFeaturePlugin, defineControlUiPlugin.
-      2611,
+      // +2: browser-safe Date timestamp validation and UTF-16 truncation primitives.
+      2613,
       env,
     ),
     publicDeprecatedExports: readPluginSdkSurfaceBudgetEnv(
