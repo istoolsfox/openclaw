@@ -416,7 +416,7 @@ final class WatchRealtimeCallController {
         guard let old = self.attempt else { return }
         self.attempt = nil
         self.inputLevel = 0
-        old.media.setMuted(true)
+        old.media.cancel()
         old.startupTask?.cancel()
         old.eventTask?.cancel()
         old.talkTask?.cancel()

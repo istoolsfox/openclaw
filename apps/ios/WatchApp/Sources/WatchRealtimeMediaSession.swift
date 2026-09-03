@@ -51,8 +51,7 @@ final class WatchRealtimeMediaSession: Sendable {
     }
 
     deinit {
-        self.audio.cancel()
-        self.transport.cancel()
+        self.cancel()
     }
 
     func startAudio() async throws -> WatchRealtimeAudioFormat {
@@ -105,10 +104,14 @@ final class WatchRealtimeMediaSession: Sendable {
         self.audio.setMuted(muted)
     }
 
-    func stop() async {
+    func cancel() {
         _ = self.lifecycle.finish()
         self.audio.cancel()
         self.transport.cancel()
+    }
+
+    func stop() async {
+        self.cancel()
         await self.audio.stop()
         await self.transport.stop()
     }

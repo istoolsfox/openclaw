@@ -99,20 +99,23 @@ final class WatchRealtimeAudioIO: @unchecked Sendable {
             do {
                 let pcm = try codec.decode(packet)
                 guard pcm.frameLength > 0 else { return }
-                // UDP cannot be backpressured. Keep a stall from turning live speech into
-                // an ever-growing queue of old audio (240 ms at the negotiated 48 kHz).
-                if self.scheduledFrames + pcm.frameLength > 11520 { self.clearPlayback() }
-                let generation = self.playbackGeneration
-                let frames = pcm.frameLength
-                self.scheduledFrames += frames
-                self.player.scheduleBuffer(pcm, completionCallbackType: .dataPlayedBack) { [weak self] _ in
-                    guard let self else { return }
-                    self.queue.async {
-                        guard self.playbackGeneration == generation else { return }
-                        self.scheduledFrames -= frames
+                // Cancellation may arrive during decode; fence the final playback admission.
+                self.gate.withLock { state in
+                    guard !state.stopped else { return }
+                    // Bound queued speech to 240 ms at the negotiated 48 kHz.
+                    if self.scheduledFrames + pcm.frameLength > 11520 { self.clearPlayback() }
+                    let generation = self.playbackGeneration
+                    let frames = pcm.frameLength
+                    self.scheduledFrames += frames
+                    self.player.scheduleBuffer(pcm, completionCallbackType: .dataPlayedBack) { [weak self] _ in
+                        guard let self else { return }
+                        self.queue.async {
+                            guard self.playbackGeneration == generation else { return }
+                            self.scheduledFrames -= frames
+                        }
                     }
+                    if !self.player.isPlaying { self.player.play() }
                 }
-                if !self.player.isPlaying { self.player.play() }
             } catch { self.fail(error.localizedDescription) }
         }
     }
