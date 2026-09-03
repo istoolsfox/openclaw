@@ -21,13 +21,20 @@ typedef struct {
 
 /* One serial owner. After EVERY mutation, poll to kind=0 before mutating again.
  * Returned byte pointers expire at the next call; copy before returning to the run loop.
- * Results: 0 success, -1 failed/closed, -2 invalid input. No network I/O occurs here. */
+ * Results: 0 success, -1 failed/closed, -2 invalid input,
+ * -3 unsupported answer (requires ICE-lite with UDP candidates), -4 candidate budget.
+ * No network I/O occurs here. */
 OpenClawRTC *openclaw_rtc_create(void);
 void openclaw_rtc_free(OpenClawRTC *rtc);
 int32_t openclaw_rtc_add_candidate(OpenClawRTC *rtc, OpenClawRTCAddress address);
+int32_t openclaw_rtc_remove_candidate(OpenClawRTC *rtc, OpenClawRTCAddress address);
 int32_t openclaw_rtc_offer(OpenClawRTC *rtc);
 const uint8_t *openclaw_rtc_description(const OpenClawRTC *rtc, size_t *length);
 int32_t openclaw_rtc_answer(OpenClawRTC *rtc, const uint8_t *bytes, size_t length);
+/* Read-only discovery inventory after answer; 0 address, 1 end, -1 failed/closed.
+ * Does not replace or filter the engine's authenticated candidate checklist. */
+int32_t openclaw_rtc_remote_address(const OpenClawRTC *rtc, size_t index,
+                                  OpenClawRTCAddress *address);
 int32_t openclaw_rtc_receive(OpenClawRTC *rtc, OpenClawRTCAddress source,
                            OpenClawRTCAddress destination, const uint8_t *bytes, size_t length);
 int32_t openclaw_rtc_send_opus(OpenClawRTC *rtc, const uint8_t *bytes, size_t length,

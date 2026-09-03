@@ -62,9 +62,19 @@ transitive versions.
 Every native RTC mutation must be followed by polling until the next timeout.
 `WatchRealtimeTransport` enforces this on one serial queue. C byte pointers are
 borrowed until the next bridge call and are copied before crossing the queue.
-The transport advertises real local addresses and a reserved UDP port, and binds
-outbound candidate flows to that port. It does not add an external STUN service,
-TURN relay, TCP media fallback or BSD socket path.
+The initial offer has no local candidates and requires an ICE-lite answer with
+UDP candidates. After accepting that answer, the transport opens outbound flows
+and registers their actual Network.framework ready addresses with the ICE engine
+before sending checks. It does not assume a requested local port was honored.
+The provider learns the local candidates through authenticated ICE checks; no
+second SDP exchange or trickle channel is needed for this ICE-lite flow.
+
+Candidate discovery is bounded by the pinned ICE engine's 100-pair budget.
+Unsupported answers and oversized candidate sets fail visibly rather than being
+silently truncated. Only a pending ICE check may wait for a flow to become ready;
+media requires a ready route. Cancellation closes the same admission lock used
+for native mutations and network sends. The transport does not add an external
+STUN service, TURN relay, TCP media fallback or BSD socket path.
 
 Start and asynchronously activate the duplex audio session before opening any
 low-level Watch connection. Watch audio uses `playAndRecord`, `voiceChat` and the

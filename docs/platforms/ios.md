@@ -208,7 +208,8 @@ tailnet-only route is not enough when the Watch is away from the phone.
 
 1. Configure realtime [Talk mode](/nodes/talk) on the Gateway with `webrtc`
    transport and a provider/authentication combination that supports
-   `gateway-control-v1`. Provider credentials stay on the Gateway.
+   `gateway-control-v1` and returns an ICE-lite answer with UDP candidates.
+   Provider credentials stay on the Gateway.
 2. On iPhone, open **Settings -> Apple Watch -> Enable Standalone Voice**.
    This also pairs the direct node; **Enable Direct Gateway Connection**
    alone does not grant voice access.
@@ -232,7 +233,8 @@ The secure Gateway WebSocket carries call control and transcript events, not
 microphone audio. The Gateway controls provider tools and agent consultations;
 the Watch does not open a provider data channel or receive a permanent provider
 API key. Unsupported provider/authentication or transport choices fail visibly
-instead of switching to a different voice path.
+instead of switching to a different voice path. The native Watch transport
+requires ICE-lite; support for Gateway-controlled WebRTC alone is not sufficient.
 
 Each new call uses a separate session for its selected agent. Network recovery
 is bounded and keeps that agent and chat session; **Try Again** after a terminal

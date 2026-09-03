@@ -61,6 +61,23 @@ struct WatchRealtimeMediaTests {
         #expect(controller.errorText == nil)
     }
 
+    @Test func `pre-offer Opus leaves offer creation usable`() async throws {
+        let eventCount = Mutex(0)
+        let transport = WatchRealtimeTransport { _ in eventCount.withLock { $0 += 1 } }
+        // Audio is active before signaling; muted capture still produces Opus frames.
+        transport.sendOpus(Data([0xF8, 0xFF, 0xFE]), timestamp: 0)
+        do {
+            let offer = try await transport.makeOffer()
+            #expect(offer.hasPrefix("v=0\r\n"))
+            #expect(offer.contains("\r\nm=audio "))
+        } catch {
+            await transport.stop()
+            throw error
+        }
+        await transport.stop()
+        #expect(eventCount.withLock { $0 } == 0)
+    }
+
     @Test func `cancelled and stopped transports cannot begin a network session`() async throws {
         let eventCount = Mutex(0)
         let transport = WatchRealtimeTransport { _ in eventCount.withLock { $0 += 1 } }

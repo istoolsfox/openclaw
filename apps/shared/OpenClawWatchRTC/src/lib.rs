@@ -72,6 +72,7 @@ pub struct OpenClawRTC {
     pending: Option<SdpPendingOffer>,
     mid: Option<Mid>,
     description: Vec<u8>,
+    remote_addresses: Vec<SocketAddr>,
     output_bytes: Vec<u8>,
 }
 
@@ -115,6 +116,7 @@ pub extern "C" fn openclaw_rtc_create() -> *mut OpenClawRTC {
             pending: None,
             mid: None,
             description: Vec::new(),
+            remote_addresses: Vec::new(),
             output_bytes: Vec::new(),
         }))
     })
@@ -161,6 +163,37 @@ pub unsafe extern "C" fn openclaw_rtc_offer(pointer: *mut OpenClawRTC) -> i32 {
 }
 
 #[unsafe(no_mangle)]
+pub unsafe extern "C" fn openclaw_rtc_remove_candidate(
+    pointer: *mut OpenClawRTC,
+    address: OpenClawRTCAddress,
+) -> i32 {
+    unsafe {
+        operate(pointer, |state| {
+            let candidate = Candidate::host(address.socket()?, Protocol::Udp).map_err(|_| -2)?;
+            // Only retire ICE state after our one SDP exchange; no later SDP offer
+            // is generated from direct-API mutations.
+            state.rtc.as_mut().ok_or(-1)?.direct_api().invalidate_candidate(&candidate);
+            Ok(())
+        })
+    }
+}
+
+// Discovery metadata only: the unchanged SDP/ICE owner decides which candidates form pairs.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn openclaw_rtc_remote_address(
+    pointer: *const OpenClawRTC,
+    index: usize,
+    address: *mut OpenClawRTCAddress,
+) -> i32 {
+    let (Some(state), Some(address)) = (unsafe { pointer.as_ref() }, unsafe { address.as_mut() })
+    else { return -1; };
+    if state.rtc.is_none() { return -1; }
+    let Some(value) = state.remote_addresses.get(index) else { return 1; };
+    *address = (*value).into();
+    0
+}
+
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn openclaw_rtc_description(
     pointer: *const OpenClawRTC,
     length: *mut usize,
@@ -183,6 +216,26 @@ pub unsafe extern "C" fn openclaw_rtc_answer(
         operate(pointer, |state| {
             let text = std::str::from_utf8(input(bytes, length, 65_536)?).map_err(|_| -2)?;
             let answer = SdpAnswer::from_sdp_string(text).map_err(|_| -2)?;
+            // RFC 8838 Appendix B permits discovering our candidates through checks only
+            // for an ICE-lite peer. This single-exchange client has no trickle channel.
+            if !answer.session.ice_lite() { return Err(-3); }
+            let credentials = answer.session.ice_creds()
+                .or_else(|| answer.media_lines.iter().find_map(|media| media.ice_creds()))
+                .ok_or(-2)?;
+            let mut remote_addresses = Vec::new();
+            for candidate in answer.session.ice_candidates()
+                .chain(answer.media_lines.iter().flat_map(|media| media.ice_candidates())) {
+                if candidate.proto() != Protocol::Udp
+                    || candidate.ufrag().is_some_and(|value| value != credentials.ufrag.as_str()) {
+                    continue;
+                }
+                let address = candidate.addr();
+                OpenClawRTCAddress::from(address).socket()?;
+                if !remote_addresses.contains(&address) { remote_addresses.push(address); }
+            }
+            if remote_addresses.is_empty() { return Err(-3); }
+            // Match the pinned ICE owner's default pair budget; never truncate the answer.
+            if remote_addresses.len() > 100 { return Err(-4); }
             let pending = state.pending.take().ok_or(-1)?;
             state
                 .rtc
@@ -190,7 +243,9 @@ pub unsafe extern "C" fn openclaw_rtc_answer(
                 .ok_or(-1)?
                 .sdp_api()
                 .accept_answer(pending, answer)
-                .map_err(|_| -1)
+                .map_err(|_| -1)?;
+            state.remote_addresses = remote_addresses;
+            Ok(())
         })
     }
 }
