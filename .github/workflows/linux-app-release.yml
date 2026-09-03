@@ -236,6 +236,27 @@ jobs:
           pnpm dlx @tauri-apps/cli@2.11.4 build --bundles deb,appimage \
             --config "{\"version\":\"${version}\"}"
 
+      - name: Finalize and re-sign AppImage
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          bundle_dir=apps/linux/src-tauri/target/release/bundle/appimage
+          apps/linux/scripts/finalize-appimage.sh "$bundle_dir"
+          shopt -s nullglob
+          appimages=("$bundle_dir"/*.AppImage)
+          if [[ ${#appimages[@]} -ne 1 ]]; then
+            echo "Expected one finalized AppImage, found ${#appimages[@]}"
+            exit 1
+          fi
+          appimage=${appimages[0]}
+          pnpm dlx @tauri-apps/cli@2.11.4 signer sign "$appimage"
+          if [[ ! -s "${appimage}.sig" ]]; then
+            echo "Finalized AppImage signature was not created"
+            exit 1
+          fi
+
       - name: Verify and rename Linux bundles
         env:
           RELEASE_TAG: ${{ inputs.tag }}
