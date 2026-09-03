@@ -35,7 +35,6 @@ struct OpenClawWatchApp: App {
     @State private var inboxStore = WatchInboxStore(
         requestNotificationAuthorization: !WatchScreenshotMode.enabled)
     @State private var directNode = WatchDirectNode()
-    @State private var voiceCall = WatchRealtimeCallController()
     @State private var navigationPath: [WatchDestination] = []
     @State private var notificationDelegate = WatchNotificationPresentationDelegate()
     @State private var receiver: WatchConnectivityReceiver?
@@ -47,7 +46,6 @@ struct OpenClawWatchApp: App {
                 navigationPath: self.navigationPathBinding,
                 store: self.inboxStore,
                 directNode: self.directNode,
-                voiceCall: self.voiceCall,
                 onAction: { action in
                     guard let receiver = self.receiver else { return }
                     let draft = self.inboxStore.makeReplyDraft(action: action)
@@ -127,14 +125,11 @@ struct OpenClawWatchApp: App {
             case .inactive:
                 self.directNode.disconnectForBackground()
             case .background:
-                self.voiceCall.sceneDidEnterBackground()
+                self.directNode.voiceCall.sceneDidEnterBackground()
                 self.directNode.disconnectForBackground()
             @unknown default:
                 break
             }
-        }
-        .onChange(of: self.directNode.voiceConnection) { _, _ in
-            self.voiceCall.end()
         }
     }
 
@@ -144,7 +139,7 @@ struct OpenClawWatchApp: App {
             set: { path in
                 // Destination removal is an intentional exit; background visibility is not.
                 if self.navigationPath.contains(.standaloneVoice), !path.contains(.standaloneVoice) {
-                    self.voiceCall.end()
+                    self.directNode.voiceCall.end()
                 }
                 self.navigationPath = path
             })

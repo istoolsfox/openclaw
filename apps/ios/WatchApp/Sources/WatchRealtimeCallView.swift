@@ -4,7 +4,10 @@ struct WatchRealtimeCallView: View {
     @Environment(\.scenePhase) private var scenePhase
 
     let directNode: WatchDirectNode
-    let controller: WatchRealtimeCallController
+
+    private var controller: WatchRealtimeCallController {
+        self.directNode.voiceCall
+    }
 
     private var hasCall: Bool {
         switch self.controller.state {

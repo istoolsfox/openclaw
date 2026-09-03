@@ -20,7 +20,6 @@ struct WatchInboxView: View {
     @Binding var navigationPath: [WatchDestination]
     var store: WatchInboxStore
     var directNode: WatchDirectNode
-    var voiceCall: WatchRealtimeCallController
     var onAction: ((WatchPromptAction) -> Void)?
     var onExecApprovalDecision: ((String, String?, WatchExecApprovalDecision) -> Void)?
     var onRefreshExecApprovalReview: (() -> Void)?
@@ -43,7 +42,7 @@ struct WatchInboxView: View {
                 .navigationDestination(for: WatchDestination.self) { destination in
                     switch destination {
                     case .standaloneVoice:
-                        WatchRealtimeCallView(directNode: self.directNode, controller: self.voiceCall)
+                        WatchRealtimeCallView(directNode: self.directNode)
                     }
                 }
         }

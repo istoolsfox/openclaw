@@ -224,9 +224,10 @@ tailnet-only route is not enough when the Watch is away from the phone.
 
 The one-time setup gives the Watch its own node credential and an operator
 credential with exactly `operator.read` and `operator.talk`. It does not grant
-admin access or copy the iPhone's saved Gateway token or password. Credentials
-are stored in the Watch Keychain for that Gateway. If setup is incomplete or
-expired, send it again from iPhone Settings.
+admin access or copy the iPhone's saved Gateway token or password. Setup
+configuration is stored in the Watch Keychain; issued device credentials are
+stored in its protected native-state SQLite database, scoped to that Gateway.
+If setup is incomplete or expired, send it again from iPhone Settings.
 
 Audio uses native WebRTC with Opus over UDP between the Watch and provider.
 The secure Gateway WebSocket carries call control and transcript events, not
@@ -251,7 +252,7 @@ usable audio, and calls may end earlier.
 An established call uses background audio and is not intentionally ended merely
 because the display dims or the app backgrounds. Startup that backgrounds before
 connecting stops with a message asking you to keep OpenClaw on screen. Navigating
-back, tapping **End**, changing or forgetting the Watch's Gateway connection,
+back, tapping **End**, disabling, changing or forgetting the Watch's Gateway connection,
 an audio interruption, or an unrecoverable failure ends the call.
 
 Physical-Watch microphone/speaker routing, wrist-down operation, Wi-Fi/cellular

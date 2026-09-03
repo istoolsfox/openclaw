@@ -97,6 +97,8 @@ final class WatchDirectNode {
     private var isForeground = false
     private var connectionGeneration = 0
 
+    let voiceCall = WatchRealtimeCallController()
+
     private(set) var isEnabled: Bool
     private(set) var isConnected = false
     private(set) var statusText = String(
@@ -759,6 +761,14 @@ final class WatchDirectNode {
     }
 
     private func refreshVoiceConnection() {
+        let connection = self.resolveVoiceConnection()
+        guard connection != self.voiceConnection else { return }
+        // Retire media before publishing new authority or acknowledging a setup change.
+        self.voiceCall.end()
+        self.voiceConnection = connection
+    }
+
+    private func resolveVoiceConnection() -> WatchVoiceConnection? {
         guard self.isEnabled,
               let configuration,
               configuration.link.bootstrapToken == nil,
@@ -769,11 +779,8 @@ final class WatchDirectNode {
                   gatewayID: configuration.gatewayID,
                   profile: .primary),
               credential.scopes == WatchNodeConnectResponse.voiceScopes
-        else {
-            self.voiceConnection = nil
-            return
-        }
-        self.voiceConnection = configuration.voiceConnection
+        else { return nil }
+        return configuration.voiceConnection
     }
 
     private func clearCredentials(deviceId: String, gatewayID: String) {
