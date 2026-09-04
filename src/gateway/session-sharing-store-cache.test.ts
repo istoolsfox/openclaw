@@ -8,6 +8,8 @@ import {
   authorizeResolvedSessionMutation,
   resolveSessionMutationAuthorization,
 } from "./session-sharing.js";
+import { roleClient, rolePolicyConfig } from "./session-sharing.test-utils.js";
+import { canAccessTaskRequesterSession } from "./task-session-access.js";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -39,6 +41,51 @@ function identifiedClient(userId: string): GatewayClient {
 }
 
 describe("session mutation authorization store caches", () => {
+  it("checks task visibility without parsing unrelated sessions and rereads changed access", async () => {
+    await withOpenClawTestState({ scenario: "minimal" }, async () => {
+      const sessionKey = "agent:main:task-requester";
+      const requestClient = roleClient("view", "task-viewer");
+      const owner = roleClient("view", "task-owner");
+      const entry = {
+        sessionId: "session-task-requester",
+        updatedAt: 1,
+        visibility: "shared" as const,
+        createdActor: {
+          type: "human" as const,
+          source: "profile" as const,
+          id: owner.authenticatedUserProfile!.profileId,
+        },
+      };
+      await sessionAccessor.upsertSessionEntryCore({ agentId: "main", sessionKey }, entry);
+      for (let index = 0; index < 24; index += 1) {
+        await sessionAccessor.upsertSessionEntryCore(
+          { agentId: "main", sessionKey: `agent:main:unrelated-${index}` },
+          { sessionId: `unrelated-task-access-session-${index}`, updatedAt: 1 },
+        );
+      }
+      // Canonical-store validation belongs to handle admission, not each task check.
+      expect(
+        sessionAccessor.loadExactSessionEntryReadOnly({ agentId: "main", sessionKey }),
+      ).toBeDefined();
+      const access = {
+        cfg: rolePolicyConfig(),
+        client: requestClient,
+        task: { requesterAgentId: "main", requesterSessionKey: sessionKey, ownerKey: sessionKey },
+      };
+      const parseSpy = vi.spyOn(JSON, "parse");
+      expect(canAccessTaskRequesterSession(access)).toBe(true);
+      await sessionAccessor.upsertSessionEntryCore(
+        { agentId: "main", sessionKey },
+        { ...entry, visibility: "draft", updatedAt: 2 },
+      );
+      expect(canAccessTaskRequesterSession(access)).toBe(false);
+      expect(canAccessTaskRequesterSession({ ...access, client: owner })).toBe(true);
+      expect(
+        parseSpy.mock.calls.filter(([value]) => value.includes("unrelated-task-access-session-")),
+      ).toHaveLength(0);
+    });
+  });
+
   it("fails a patchMany request when a nested target is incognito", async () => {
     await withOpenClawTestState({ scenario: "minimal" }, async () => {
       const sessionKey = "agent:main:dashboard:incognito-patch-many";
