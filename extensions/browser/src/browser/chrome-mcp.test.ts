@@ -1743,19 +1743,18 @@ describe("chrome MCP page parsing", () => {
     );
     await fs.chmod(fakeMcpCommand, 0o755);
 
-    const start = StdioClientTransport.prototype.start;
     // Observe stderr before the SDK sends initialize; separate pipes need not arrive in order.
-    using _start = vi
-      .spyOn(StdioClientTransport.prototype, "start")
-      .mockImplementation(async function (this: StdioClientTransport) {
-        const stderr = this.stderr;
-        if (!stderr) {
-          throw new Error("Expected piped Chrome MCP stderr");
-        }
-        const received = once(stderr, "data");
-        await start.call(this);
-        await received;
-      });
+    using start = vi.spyOn(StdioClientTransport.prototype, "start");
+    start.mockImplementation(async function (this: StdioClientTransport) {
+      const stderr = this.stderr;
+      if (!stderr) {
+        throw new Error("Expected piped Chrome MCP stderr");
+      }
+      const received = once(stderr, "data");
+      start.mockRestore();
+      await this.start();
+      await received;
+    });
     using warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     setLoggerOverride({ level: "silent", consoleLevel: "warn" });
     let message = "";
