@@ -820,7 +820,8 @@ describe("watch node HTTP transport", () => {
     runtime.close();
   });
 
-  it("bootstraps, registers, polls an invoke, and accepts its result", async () => {
+  it("restores only declared approved commands after a denied reconnect and accepts an invoke result", async () => {
+    const options: Parameters<typeof startWatchNodeHttpRuntime>[2] = { config: {} };
     const {
       baseDir,
       identity,
@@ -832,12 +833,13 @@ describe("watch node HTTP transport", () => {
       runtime,
       connectHandled,
       baseUrl,
-    } = await createWatchNodeFixture("openclaw-watch-node-http-");
+    } = await createWatchNodeFixture("openclaw-watch-node-http-", options);
 
     const connectResponse = await connectWatchNode({
       baseUrl,
       identity,
       bootstrapToken: issued.token,
+      commands: ["device.info", "device.status"],
     });
     expect(connectResponse.status).toBe(200);
     const connected = await readJson(connectResponse);
@@ -845,25 +847,40 @@ describe("watch node HTTP transport", () => {
     expect(connected.sessionToken).toEqual(expect.any(String));
     expect(connected.deviceToken).toEqual(expect.any(String));
     expect(connected.deviceTokens).toBeUndefined();
-    expect(nodeRegistry.get(identity.deviceId)?.commands).toEqual([
-      "device.info",
-      "device.status",
-      "system.notify",
-    ]);
+    expect(nodeRegistry.get(identity.deviceId)?.commands).toEqual(["device.info", "device.status"]);
     expect(broadcasts.map((entry) => entry.event)).toContain("device.pair.resolved");
     expect(broadcasts.map((entry) => entry.event)).toContain("node.pair.resolved");
     expect(connectedNodes).toEqual([identity.deviceId]);
 
+    options.config = { gateway: { nodes: { commands: { deny: ["device.info"] } } } };
+    nodeRegistry.refreshRuntimePolicy(options.config);
     const reconnectResponse = await connectWatchNode({
       baseUrl,
       identity,
       deviceToken: String(connected.deviceToken),
+      commands: ["device.info", "system.notify"],
     });
     expect(reconnectResponse.status).toBe(200);
     const reconnected = await readJson(reconnectResponse);
     expect(reconnected.deviceToken).toBe(connected.deviceToken);
     expect(connectedNodes).toEqual([identity.deviceId, identity.deviceId]);
     expect(disconnectedNodes).toEqual([]);
+    expect(nodeRegistry.get(identity.deviceId)?.commands).toEqual([]);
+    const connId = nodeRegistry.get(identity.deviceId)?.connId;
+    options.config = {};
+    nodeRegistry.refreshRuntimePolicy(options.config);
+    expect(nodeRegistry.get(identity.deviceId)).toMatchObject({
+      connId,
+      commands: ["device.info"],
+    });
+    for (const command of ["device.status", "system.notify"]) {
+      await expect(
+        nodeRegistry.invoke({ nodeId: identity.deviceId, command }),
+      ).resolves.toMatchObject({
+        ok: false,
+        error: { code: "POLICY_CHANGED" },
+      });
+    }
     const stalePollResponse = await fetch(`${baseUrl}/poll`, {
       method: "POST",
       headers: { authorization: `Bearer ${String(connected.sessionToken)}` },

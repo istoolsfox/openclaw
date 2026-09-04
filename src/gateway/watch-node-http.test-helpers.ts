@@ -186,6 +186,7 @@ export async function connectWatchNode(params: {
   client?: Partial<ConnectParams["client"]>;
   bootstrapToken?: string;
   deviceToken?: string;
+  commands?: string[];
   permissions?: ConnectParams["permissions"];
 }): Promise<Response> {
   const challenge = await readJson(await fetch(`${params.baseUrl}/challenge`));
@@ -200,6 +201,7 @@ export async function connectWatchNode(params: {
         signedAt: Number(challenge.ts),
         bootstrapToken: params.bootstrapToken,
         deviceToken: params.deviceToken,
+        commands: params.commands,
         permissions: params.permissions,
       }),
     ),

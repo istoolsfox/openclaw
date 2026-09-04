@@ -59,14 +59,19 @@ final class WatchRealtimeMediaSession: Sendable {
             guard phase == .idle else { return false }
             phase = .starting
             return true
-        }) else { throw WatchRealtimeMediaError.unavailable("This voice session has already started or stopped.") }
+        })
+        else {
+            throw WatchRealtimeMediaError
+                .unavailable(String(localized: "This voice session has already started or stopped."))
+        }
         do {
             let allowed = await PermissionRequestBridge.awaitRequest {
                 AVAudioApplication.requestRecordPermission(completionHandler: $0)
             }
             try Task.checkCancellation()
             guard allowed else {
-                throw WatchRealtimeMediaError.unavailable("Allow microphone access in Settings to start voice.")
+                throw WatchRealtimeMediaError
+                    .unavailable(String(localized: "Allow microphone access in Settings to start voice."))
             }
             let format = try await self.audio.start(
                 onPacket: { [transport = self.transport] in transport.sendOpus($0, timestamp: $1) },
@@ -91,7 +96,7 @@ final class WatchRealtimeMediaSession: Sendable {
 
     func makeOffer() async throws -> String {
         guard self.lifecycle.phase.withLock({ $0 == .active }) else {
-            throw WatchRealtimeMediaError.unavailable("Activate voice audio before connecting.")
+            throw WatchRealtimeMediaError.unavailable(String(localized: "Activate voice audio before connecting."))
         }
         return try await self.transport.makeOffer()
     }

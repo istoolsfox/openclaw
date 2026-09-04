@@ -18,7 +18,9 @@ final class WatchOpusCodec {
               ]),
               let encoder = AVAudioConverter(from: pcm, to: opus),
               let decoder = AVAudioConverter(from: opus, to: pcm)
-        else { throw WatchRealtimeMediaError.unavailable("Opus audio is unavailable on this device.") }
+        else {
+            throw WatchRealtimeMediaError.unavailable(String(localized: "Opus audio is unavailable on this device."))
+        }
         self.pcmFormat = pcm
         self.opusFormat = opus
         self.encoder = encoder
@@ -30,7 +32,8 @@ final class WatchOpusCodec {
 
     func encode(_ pcm: AVAudioPCMBuffer) throws -> Data? {
         guard pcm.frameLength == Self.frameCount, pcm.format == self.pcmFormat else {
-            throw WatchRealtimeMediaError.unavailable("Voice capture returned an unexpected audio format.")
+            throw WatchRealtimeMediaError
+                .unavailable(String(localized: "Voice capture returned an unexpected audio format."))
         }
         let output = AVAudioCompressedBuffer(
             format: self.opusFormat, packetCapacity: 1, maximumPacketSize: self.encoder.maximumOutputPacketSize)
@@ -45,14 +48,15 @@ final class WatchOpusCodec {
             return pcm
         }
         if let error { throw error }
-        guard result != .error else { throw WatchRealtimeMediaError.unavailable("Voice encoding failed.") }
+        guard result != .error
+        else { throw WatchRealtimeMediaError.unavailable(String(localized: "Voice encoding failed.")) }
         guard output.packetCount == 1 else { return nil }
         return Data(bytes: output.data, count: Int(output.byteLength))
     }
 
     func decode(_ packet: Data) throws -> AVAudioPCMBuffer {
         guard !packet.isEmpty, packet.count <= 2000 else {
-            throw WatchRealtimeMediaError.unavailable("Voice received an invalid Opus packet.")
+            throw WatchRealtimeMediaError.unavailable(String(localized: "Voice received an invalid Opus packet."))
         }
         let input = AVAudioCompressedBuffer(format: self.opusFormat, packetCapacity: 1, maximumPacketSize: packet.count)
         packet.copyBytes(to: input.data.assumingMemoryBound(to: UInt8.self), count: packet.count)
@@ -63,7 +67,7 @@ final class WatchOpusCodec {
         input.packetDescriptions?.pointee = AudioStreamPacketDescription(
             mStartOffset: 0, mVariableFramesInPacket: 0, mDataByteSize: UInt32(packet.count))
         guard let output = AVAudioPCMBuffer(pcmFormat: self.pcmFormat, frameCapacity: 5760) else {
-            throw WatchRealtimeMediaError.unavailable("Voice playback could not allocate audio.")
+            throw WatchRealtimeMediaError.unavailable(String(localized: "Voice playback could not allocate audio."))
         }
         var supplied = false
         var error: NSError?
@@ -76,7 +80,8 @@ final class WatchOpusCodec {
             return input
         }
         if let error { throw error }
-        guard result != .error else { throw WatchRealtimeMediaError.unavailable("Voice decoding failed.") }
+        guard result != .error
+        else { throw WatchRealtimeMediaError.unavailable(String(localized: "Voice decoding failed.")) }
         return output
     }
 }

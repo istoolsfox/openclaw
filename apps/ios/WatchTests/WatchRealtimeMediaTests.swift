@@ -1,6 +1,7 @@
 import AVFAudio
 import Foundation
 import Observation
+import OpenClawProtocol
 import Synchronization
 import Testing
 import XCTest
@@ -8,6 +9,89 @@ import XCTest
 
 @MainActor
 struct WatchRealtimeMediaTests {
+    @Test(arguments: ["failed", "incomplete", nil] as [String?])
+    func `response and generic voice errors leave the session reusable`(status: String?) throws {
+        var events = WatchRealtimeCallController.TalkEvents()
+        _ = try events.accept(Self.talkFrame("session.ready", seq: 1))
+        var payload: [String: Any] = ["message": "The audio could not be transcribed."]
+        if let status { payload["status"] = status }
+        _ = try events.accept(Self.talkFrame("session.error", seq: 2, payload: payload, final: true))
+        #expect(events.controlReady)
+        #expect(events.errorText == "The audio could not be transcribed.")
+
+        _ = try events.accept(Self.talkFrame("turn.ended", seq: 3, final: true))
+        _ = try events.accept(Self.talkFrame("session.ready", seq: 4))
+        #expect(events.errorText == "The audio could not be transcribed.")
+        _ = try events.accept(Self.talkFrame("turn.started", seq: 2))
+        _ = try events.accept(Self.talkFrame("session.error", seq: 1, payload: ["message": "Stale error"]))
+        #expect(events.errorText == "The audio could not be transcribed.")
+
+        _ = try events.accept(Self.talkFrame("turn.started", seq: 5))
+        #expect(events.errorText == nil)
+        _ = try events.accept(Self.talkFrame(
+            "transcript.done", seq: 6, payload: ["text": "Please try again"], final: true))
+        #expect(events.latestUserTranscript == "Please try again")
+        _ = try events.accept(Self.talkFrame(
+            "output.text.done", seq: 7, payload: ["text": "I can hear you."], final: true))
+        #expect(events.latestAssistantTranscript == "I can hear you.")
+        #expect(events.controlReady)
+    }
+
+    @Test(arguments: [false, true])
+    func `voice notices bound supplied text and provide a missing-message fallback`(missingMessage: Bool) throws {
+        var events = WatchRealtimeCallController.TalkEvents()
+        let message = "  e\u{301} " + String(repeating: "🦞", count: 600)
+        let payload: [String: Any] = missingMessage ? ["status": "failed"] : ["message": message]
+        _ = try events.accept(Self.talkFrame("session.error", seq: 1, payload: payload, final: true))
+        let notice = try #require(events.errorText)
+        if missingMessage {
+            #expect(!notice.isEmpty)
+        } else {
+            #expect(notice.utf8.elementsEqual(String(message.prefix(500)).utf8))
+        }
+        #expect(notice.count <= 500)
+        _ = try events.accept(Self.talkFrame("session.ready", seq: 2))
+        #expect(events.errorText == nil)
+    }
+
+    @Test func `voice closure stays terminal and malformed envelopes fail decoding`() throws {
+        var events = WatchRealtimeCallController.TalkEvents()
+        _ = try events.accept(Self.talkFrame("session.ready", seq: 2))
+        _ = try events.accept(Self.talkFrame("session.closed", seq: 1))
+        do {
+            _ = try events.accept(Self.talkFrame("session.closed", seq: 3))
+            Issue.record("A current session.closed event did not terminate the voice session")
+        } catch let failure as WatchRealtimeMediaFailure {
+            #expect(failure.kind == .sessionEnded)
+        }
+
+        let malformed = try JSONDecoder().decode(
+            EventFrame.self,
+            from: Data(#"{"type":"event","event":"talk.event","payload":{"talkEvent":{"type":"session.error"}}}"#.utf8))
+        do {
+            _ = try events.accept(malformed)
+            Issue.record("Malformed Talk event bypassed decoding")
+        } catch is DecodingError {}
+    }
+
+    private static func talkFrame(
+        _ type: String, seq: Int, payload: [String: Any] = [:], final: Bool = false) throws -> EventFrame
+    {
+        let frame: [String: Any] = [
+            "type": "event",
+            "event": "talk.event",
+            "payload": [
+                "voiceSessionId": "watch-voice-test",
+                "talkEvent": [
+                    "id": "event-\(seq)", "type": type, "sessionId": "watch-voice-test", "turnId": "turn-1",
+                    "seq": seq, "timestamp": "2026-09-04T00:00:00Z", "mode": "realtime", "transport": "webrtc",
+                    "brain": "agent-consult", "payload": payload, "final": final,
+                ],
+            ],
+        ]
+        return try JSONDecoder().decode(EventFrame.self, from: JSONSerialization.data(withJSONObject: frame))
+    }
+
     @Test func `invalidated call admission ends before microphone and network startup`() async throws {
         let controller = WatchRealtimeCallController()
         let connection = try WatchVoiceConnection(

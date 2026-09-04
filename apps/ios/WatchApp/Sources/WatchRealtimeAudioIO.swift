@@ -150,7 +150,8 @@ final class WatchRealtimeAudioIO: @unchecked Sendable {
             return true
         }) else {
             continuation
-                .resume(throwing: WatchRealtimeMediaError.unavailable("Another voice session is still stopping."))
+                .resume(throwing: WatchRealtimeMediaError
+                    .unavailable(String(localized: "Another voice session is still stopping.")))
             return
         }
         self.ownsLease = true
@@ -173,7 +174,10 @@ final class WatchRealtimeAudioIO: @unchecked Sendable {
                         return
                     }
                     guard activated
-                    else { self.fail(error?.localizedDescription ?? "Voice audio could not be activated.")
+                    else {
+                        self
+                            .fail(error?
+                                .localizedDescription ?? String(localized: "Voice audio could not be activated."))
                         return
                     }
                     self.finishStart()
@@ -202,14 +206,17 @@ final class WatchRealtimeAudioIO: @unchecked Sendable {
         }
         self.clearPlayback()
         self.engine.stop()
-        guard let codec = self.codec else { throw WatchRealtimeMediaError.unavailable("Voice audio is not ready.") }
+        guard let codec = self.codec
+        else { throw WatchRealtimeMediaError.unavailable(String(localized: "Voice audio is not ready.")) }
         let input = self.engine.inputNode
         try input.setVoiceProcessingEnabled(true)
         let format = input.outputFormat(forBus: 0)
         guard format.sampleRate > 0, format.channelCount > 0,
               let resampler = AVAudioConverter(from: format, to: codec.pcmFormat),
               let frame = AVAudioPCMBuffer(pcmFormat: codec.pcmFormat, frameCapacity: WatchOpusCodec.frameCount)
-        else { throw WatchRealtimeMediaError.unavailable("The current audio route has no microphone.") }
+        else {
+            throw WatchRealtimeMediaError.unavailable(String(localized: "The current audio route has no microphone."))
+        }
         resampler.primeMethod = .none
         self.resampler = resampler
         self.frame = frame
@@ -344,7 +351,8 @@ final class WatchRealtimeAudioIO: @unchecked Sendable {
                     guard type?.uintValue == AVAudioSession.InterruptionType.began.rawValue else { return }
                 }
                 guard let self else { return }
-                self.queue.async { self.fail("Voice was interrupted. Start voice again to continue.") }
+                self.queue
+                    .async { self.fail(String(localized: "Voice was interrupted. Start voice again to continue.")) }
             })
         }
         #endif

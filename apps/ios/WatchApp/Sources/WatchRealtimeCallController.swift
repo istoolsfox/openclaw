@@ -36,7 +36,7 @@ final class WatchRealtimeCallController {
               connection.websocketURLs.allSatisfy({ $0.scheme == "wss" && $0.user == nil && $0.password == nil })
         else {
             self.state = .failed
-            self.errorText = "Reconnect the Watch to your Gateway, then start voice again."
+            self.errorText = String(localized: "Reconnect the Watch to your Gateway, then start voice again.")
             return
         }
         let call = Call(connection: connection, isCurrent: isCurrent)
@@ -96,7 +96,10 @@ final class WatchRealtimeCallController {
         // A retry has connecting states too. Only the call owner's recorded readiness
         // distinguishes an established background call from an unfinished first start.
         guard let call = self.call, !call.wasActive else { return nil }
-        return self.end(message: "Connection stopped in the background. Keep OpenClaw on screen until connected.")
+        return self
+            .end(
+                message: String(
+                    localized: "Connection stopped in the background. Keep OpenClaw on screen until connected."))
     }
 
     private func resetPresentation() {
@@ -126,7 +129,9 @@ final class WatchRealtimeCallController {
                 case let .gatewayDisconnected(endpointGeneration):
                     guard attempt.endpointGeneration == endpointGeneration, attempt.route != nil else { continue }
                     self.fail(
-                        WatchRealtimeMediaFailure(kind: .network, message: "Gateway connection lost."),
+                        WatchRealtimeMediaFailure(
+                            kind: .network,
+                            message: String(localized: "Gateway connection lost.")),
                         attempt: attempt)
                 }
             }
@@ -152,12 +157,14 @@ final class WatchRealtimeCallController {
                 self.agents = result.agents
                 if let agentID = call.agentID {
                     guard result.agents.contains(where: { $0.id.utf8.elementsEqual(agentID.utf8) }) else {
-                        throw Self.unavailable("The selected agent is no longer available. Start a new call.")
+                        throw Self
+                            .unavailable(
+                                String(localized: "The selected agent is no longer available. Start a new call."))
                     }
                 } else if result.agents.count == 1, let agent = result.agents.first {
                     self.select(agent.id, for: call)
                 } else if result.agents.isEmpty {
-                    throw Self.unavailable("No agents are available on this Gateway.")
+                    throw Self.unavailable(String(localized: "No agents are available on this Gateway."))
                 } else {
                     self.state = .choosingAgent
                     return
@@ -207,13 +214,16 @@ final class WatchRealtimeCallController {
                 try self.checkCurrent(attempt)
                 guard let route = await attempt.gateway.currentRoute(ifGatewayID: attempt.call.connection.gatewayID)
                 else {
-                    throw WatchRealtimeMediaFailure(kind: .network, message: "Gateway connection lost during startup.")
+                    throw WatchRealtimeMediaFailure(
+                        kind: .network,
+                        message: String(localized: "Gateway connection lost during startup."))
                 }
                 try self.checkCurrent(attempt)
                 let scopes = await attempt.gateway.currentOperatorScopes(ifCurrentRoute: route) ?? []
                 try self.checkCurrent(attempt)
                 guard scopes == Set(["operator.read", "operator.talk"]) else {
-                    throw Self.unavailable("Pair this Watch with read and Talk access in iPhone Settings.")
+                    throw Self
+                        .unavailable(String(localized: "Pair this Watch with read and Talk access in iPhone Settings."))
                 }
                 attempt.route = route
                 return
@@ -264,7 +274,11 @@ final class WatchRealtimeCallController {
               !session.clientSecret.isEmpty, let offerURL = session.offerUrl, let route = attempt.route,
               let url = await attempt.gateway.resolveGatewayHTTPURL(offerURL, relativeToGatewayContextOf: route),
               url.scheme == "https", url.user == nil, url.password == nil
-        else { throw Self.unavailable("This Gateway did not provide a usable Gateway-controlled WebRTC session.") }
+        else {
+            throw Self
+                .unavailable(
+                    String(localized: "This Gateway did not provide a usable Gateway-controlled WebRTC session."))
+        }
         attempt.created = true
         try self.checkCurrent(attempt)
         let offer = try await attempt.media.makeOffer()
@@ -282,7 +296,7 @@ final class WatchRealtimeCallController {
                 self.fail(
                     WatchRealtimeMediaFailure(
                         kind: .network,
-                        message: "Voice did not connect. Check your network and try again."),
+                        message: String(localized: "Voice did not connect. Check your network and try again.")),
                     attempt: attempt)
             }
         }
@@ -312,18 +326,18 @@ final class WatchRealtimeCallController {
         let (bytes, response) = try await http.bytes(for: request)
         try self.checkCurrent(attempt)
         guard let response = response as? HTTPURLResponse, (200..<300).contains(response.statusCode) else {
-            throw Self.unavailable("The voice provider rejected the connection. Start a new call.")
+            throw Self.unavailable(String(localized: "The voice provider rejected the connection. Start a new call."))
         }
         var data = Data()
         for try await byte in bytes {
             try self.checkCurrent(attempt)
             guard data.count < 65536
-            else { throw Self.unavailable("The voice provider returned an invalid SDP answer.") }
+            else { throw Self.unavailable(String(localized: "The voice provider returned an invalid SDP answer.")) }
             data.append(byte)
         }
         try self.checkCurrent(attempt)
         guard let answer = String(data: data, encoding: .utf8), !answer.isEmpty else {
-            throw Self.unavailable("The voice provider returned an empty SDP answer.")
+            throw Self.unavailable(String(localized: "The voice provider returned an empty SDP answer."))
         }
         return answer
     }
@@ -339,28 +353,11 @@ final class WatchRealtimeCallController {
     private func handleTalkEvent(_ frame: EventFrame, attempt: Attempt) {
         do {
             try self.checkCurrent(attempt)
-            guard let payload = frame.payload else { return }
-            let event = try JSONDecoder().decode(VoiceEvent.self, from: JSONEncoder().encode(payload)).talkEvent
-            guard event.seq > attempt.lastSequence else { return }
-            attempt.lastSequence = event.seq
-            switch event.type.stringValue {
-            case "session.ready":
-                attempt.controlReady = true
-                self.becomeActiveIfReady(attempt)
-            case "session.error":
-                throw Self
-                    .unavailable(event.payload.dictionaryValue?["message"]?
-                        .stringValue ?? "The voice provider ended the call.")
-            case "session.closed":
-                throw WatchRealtimeMediaFailure(
-                    kind: .sessionEnded,
-                    message: "The voice call ended. Start a new call to continue.")
-            case "transcript.delta", "transcript.done":
-                self.latestUserTranscript = attempt.userTranscript.accept(event)
-            case "output.text.delta", "output.text.done":
-                self.latestAssistantTranscript = attempt.assistantTranscript.accept(event)
-            default: break
-            }
+            guard try attempt.talkEvents.accept(frame) else { return }
+            self.errorText = attempt.talkEvents.errorText
+            self.latestUserTranscript = attempt.talkEvents.latestUserTranscript
+            self.latestAssistantTranscript = attempt.talkEvents.latestAssistantTranscript
+            self.becomeActiveIfReady(attempt)
         } catch {
             self.fail(error, attempt: attempt)
         }
@@ -368,7 +365,7 @@ final class WatchRealtimeCallController {
 
     private func becomeActiveIfReady(_ attempt: Attempt) {
         guard self.attempt === attempt, attempt.answerApplied, attempt.mediaConnected,
-              attempt.controlReady else { return }
+              attempt.talkEvents.controlReady else { return }
         do { try self.checkCurrent(attempt) } catch { self.fail(error, attempt: attempt)
             return
         }
@@ -376,7 +373,6 @@ final class WatchRealtimeCallController {
         attempt.deadlineTask?.cancel()
         attempt.call.wasActive = true
         self.state = .active
-        self.errorText = nil
         attempt.media.setMuted(self.isMuted)
         attempt.meterTask = Task { [weak self, weak attempt] in
             while !Task.isCancelled {
@@ -408,7 +404,7 @@ final class WatchRealtimeCallController {
             self.call = nil
             self.state = .failed
             self.errorText = stillOwned ? String(error.localizedDescription.prefix(
-                500)) : "The Gateway connection changed. Start voice again."
+                500)) : String(localized: "The Gateway connection changed. Start voice again.")
         }
     }
 
@@ -454,7 +450,7 @@ final class WatchRealtimeCallController {
 
     private static func encode(_ value: some Encodable) throws -> String {
         guard let json = try String(data: JSONEncoder().encode(value), encoding: .utf8) else {
-            throw self.unavailable("Voice could not encode its Gateway request.")
+            throw self.unavailable(String(localized: "Voice could not encode its Gateway request."))
         }
         return json
     }
@@ -538,10 +534,7 @@ extension WatchRealtimeCallController {
         var created = false
         var answerApplied = false
         var mediaConnected = false
-        var controlReady = false
-        var lastSequence = -1
-        var userTranscript = Transcript()
-        var assistantTranscript = Transcript()
+        var talkEvents = TalkEvents()
 
         init(call: Call) {
             self.call = call
@@ -558,6 +551,54 @@ extension WatchRealtimeCallController {
         }
     }
 
+    @MainActor
+    struct TalkEvents {
+        private(set) var controlReady = false
+        private(set) var errorText: String?
+        private var lastSequence = -1
+        private var userTranscript = Transcript()
+        private var assistantTranscript = Transcript()
+
+        var latestUserTranscript: String {
+            self.userTranscript.text
+        }
+
+        var latestAssistantTranscript: String {
+            self.assistantTranscript.text
+        }
+
+        mutating func accept(_ frame: EventFrame) throws -> Bool {
+            guard let payload = frame.payload else { return false }
+            let event = try JSONDecoder().decode(VoiceEvent.self, from: JSONEncoder().encode(payload)).talkEvent
+            guard event.seq > self.lastSequence else { return false }
+            self.lastSequence = event.seq
+            switch event.type.stringValue {
+            case "session.ready":
+                guard !self.controlReady else { return false }
+                self.controlReady = true
+                self.errorText = nil
+            case "session.error":
+                // Response and transcription errors do not close the Gateway's session.
+                // Only its explicit closure or an actual transport failure retires the call.
+                self.errorText = String((event.payload.dictionaryValue?["message"]?
+                        .stringValue ?? String(localized: "Voice encountered an error. Try speaking again."))
+                    .prefix(500))
+            case "turn.started":
+                self.errorText = nil
+            case "session.closed":
+                throw WatchRealtimeMediaFailure(
+                    kind: .sessionEnded,
+                    message: String(localized: "The voice call ended. Start a new call to continue."))
+            case "transcript.delta", "transcript.done":
+                self.userTranscript.accept(event)
+            case "output.text.delta", "output.text.done":
+                self.assistantTranscript.accept(event)
+            default: return false
+            }
+            return true
+        }
+    }
+
     private struct VoiceEvent: Decodable {
         let talkEvent: TalkEvent
     }
@@ -565,16 +606,15 @@ extension WatchRealtimeCallController {
     private struct Transcript {
         private var turnID: String?
         private var finished = false
-        private var text = ""
+        private(set) var text = ""
 
-        mutating func accept(_ event: TalkEvent) -> String {
-            guard let value = event.payload.dictionaryValue?["text"]?.stringValue else { return self.text }
+        mutating func accept(_ event: TalkEvent) {
+            guard let value = event.payload.dictionaryValue?["text"]?.stringValue else { return }
             let isFinal = event.final == true || event.type.stringValue?.hasSuffix(".done") == true
             if self.turnID != event.turnid || self.finished || isFinal { self.text = "" }
             self.turnID = event.turnid
             self.finished = isFinal
             self.text = String((self.text + value).suffix(1000))
-            return self.text
         }
     }
 }

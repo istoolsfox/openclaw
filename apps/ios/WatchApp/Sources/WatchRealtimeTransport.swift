@@ -91,7 +91,8 @@ final class WatchRealtimeTransport: @unchecked Sendable {
                 self.queue.async {
                     if self.started, !self.cancellationLock.withLock({ self.cancelled }) {
                         continuation
-                            .resume(throwing: WatchRealtimeMediaError.unavailable("Voice is already connecting."))
+                            .resume(throwing: WatchRealtimeMediaError
+                                .unavailable(String(localized: "Voice is already connecting.")))
                         return
                     }
                     do {
@@ -164,7 +165,7 @@ final class WatchRealtimeTransport: @unchecked Sendable {
             self.started = true
             self.generation &+= 1
             guard let rtc = openclaw_rtc_create() else {
-                throw WatchRealtimeMediaError.unavailable("Unable to initialize secure voice.")
+                throw WatchRealtimeMediaError.unavailable(String(localized: "Unable to initialize secure voice."))
             }
             self.rtc = rtc
         }
@@ -178,7 +179,7 @@ final class WatchRealtimeTransport: @unchecked Sendable {
             guard let rtc, let bytes = openclaw_rtc_description(rtc, &length),
                   let offer = String(data: Data(bytes: bytes, count: length), encoding: .utf8)
             else {
-                throw WatchRealtimeMediaError.unavailable("Voice negotiation could not be created.")
+                throw WatchRealtimeMediaError.unavailable(String(localized: "Voice negotiation could not be created."))
             }
             return offer
         }
@@ -194,7 +195,8 @@ final class WatchRealtimeTransport: @unchecked Sendable {
             }
             if result == 1 { break }
             guard result == 0 else {
-                throw WatchRealtimeMediaError.unavailable("Voice has no supported remote network address.")
+                throw WatchRealtimeMediaError
+                    .unavailable(String(localized: "Voice has no supported remote network address."))
             }
             try remotes.append(Self.endpoint(address))
         }
@@ -207,7 +209,7 @@ final class WatchRealtimeTransport: @unchecked Sendable {
         // Each seed can yield a different local port; include its cross-pairs
         // in the bound before starting any sockets, not just diagonal pairs.
         guard !bindings.isEmpty, bindings.count <= Self.pairBudget / max(1, remotes.count) else {
-            throw WatchRealtimeMediaError.unavailable("Voice cannot use this network candidate set.")
+            throw WatchRealtimeMediaError.unavailable(String(localized: "Voice cannot use this network candidate set."))
         }
         for binding in bindings {
             try self.openFlow(binding)
@@ -221,9 +223,10 @@ final class WatchRealtimeTransport: @unchecked Sendable {
             switch operation(rtc) {
             case 0: break
             case -3: throw WatchRealtimeMediaError
-                .unavailable("This voice service must support ICE-lite with UDP candidates.")
-            case -4: throw WatchRealtimeMediaError.unavailable("Voice received too many network candidates.")
-            default: throw WatchRealtimeMediaError.unavailable("The secure voice connection failed.")
+                .unavailable(String(localized: "This voice service must support ICE-lite with UDP candidates."))
+            case -4: throw WatchRealtimeMediaError
+                .unavailable(String(localized: "Voice received too many network candidates."))
+            default: throw WatchRealtimeMediaError.unavailable(String(localized: "The secure voice connection failed."))
             }
         }
         try self.drain()
@@ -235,7 +238,7 @@ final class WatchRealtimeTransport: @unchecked Sendable {
             try self.cancellationLock.withLock {
                 guard !self.cancelled, let rtc else { throw CancellationError() }
                 guard openclaw_rtc_poll(rtc, &output) == 0 else {
-                    throw WatchRealtimeMediaError.unavailable("The secure voice connection failed.")
+                    throw WatchRealtimeMediaError.unavailable(String(localized: "The secure voice connection failed."))
                 }
             }
             switch output.kind {
@@ -252,8 +255,10 @@ final class WatchRealtimeTransport: @unchecked Sendable {
             case 3:
                 guard let bytes = output.bytes else { continue }
                 self.onEvent(.audio(Data(bytes: bytes, count: output.length), timestamp: output.time))
-            case 4: throw WatchRealtimeMediaFailure(kind: .network, message: "Voice lost its network connection.")
-            case 5: throw WatchRealtimeMediaFailure(kind: .sessionEnded, message: "Voice ended.")
+            case 4: throw WatchRealtimeMediaFailure(
+                    kind: .network,
+                    message: String(localized: "Voice lost its network connection."))
+            case 5: throw WatchRealtimeMediaFailure(kind: .sessionEnded, message: String(localized: "Voice ended."))
             default: break
             }
         }
@@ -280,7 +285,8 @@ final class WatchRealtimeTransport: @unchecked Sendable {
     @discardableResult
     private func openFlow(_ binding: Binding) throws -> UUID {
         guard self.flows.count < Self.pairBudget else {
-            throw WatchRealtimeMediaError.unavailable("Voice exhausted its network candidate budget.")
+            throw WatchRealtimeMediaError
+                .unavailable(String(localized: "Voice exhausted its network candidate budget."))
         }
         let parameters = NWParameters.udp
         parameters.allowLocalEndpointReuse = true
@@ -304,7 +310,7 @@ final class WatchRealtimeTransport: @unchecked Sendable {
             self.queue.async {
                 guard let flow = self.flows[id], let route = flow.route else { return }
                 if !Self.matches(flow.connection, route: route) {
-                    self.flowFailed(id, message: "Voice changed its network address.")
+                    self.flowFailed(id, message: String(localized: "Voice changed its network address."))
                 }
             }
         }
@@ -352,13 +358,13 @@ final class WatchRealtimeTransport: @unchecked Sendable {
         guard let source = flow.connection.currentPath?.localEndpoint,
               let destination = flow.connection.currentPath?.remoteEndpoint
         else {
-            throw WatchRealtimeMediaError.unavailable("Voice has no ready network address.")
+            throw WatchRealtimeMediaError.unavailable(String(localized: "Voice has no ready network address."))
         }
         _ = try Self.nativeAddress(source)
         _ = try Self.nativeAddress(destination)
         let requested = flow.binding.requested
         guard destination == requested.destination else {
-            throw WatchRealtimeMediaError.unavailable("Voice changed its remote network address.")
+            throw WatchRealtimeMediaError.unavailable(String(localized: "Voice changed its remote network address."))
         }
         switch flow.binding {
         case .discover:
@@ -366,11 +372,13 @@ final class WatchRealtimeTransport: @unchecked Sendable {
                   case let .hostPort(requestedHost, _) = requested.source,
                   actualHost == requestedHost, actualPort.rawValue != 0
             else {
-                throw WatchRealtimeMediaError.unavailable("Voice could not bind its local network address.")
+                throw WatchRealtimeMediaError
+                    .unavailable(String(localized: "Voice could not bind its local network address."))
             }
         case .exact:
             guard source == requested.source, self.localCandidates.contains(source) else {
-                throw WatchRealtimeMediaError.unavailable("Voice could not retain its network address.")
+                throw WatchRealtimeMediaError
+                    .unavailable(String(localized: "Voice could not retain its network address."))
             }
         }
         return Route(source: source, destination: destination)
@@ -382,7 +390,9 @@ final class WatchRealtimeTransport: @unchecked Sendable {
         let isCheck = data.count >= 20 && data[0] & 0xC0 == 0 && data[4..<8].elementsEqual([0x21, 0x12, 0xA4, 0x42])
         if !isCheck { self.activeRoute = route }
         guard !self.failedRoutes.contains(route) else {
-            if !isCheck { throw WatchRealtimeMediaFailure(kind: .network, message: "Voice lost its media route.") }
+            if !isCheck { throw WatchRealtimeMediaFailure(
+                kind: .network,
+                message: String(localized: "Voice lost its media route.")) }
             return
         }
         let existing = self.flows.first { $0.value.route == route } ?? self.flows.first { _, flow in
@@ -394,7 +404,9 @@ final class WatchRealtimeTransport: @unchecked Sendable {
             try self.send(packet, id: existing.key)
         } else {
             guard isCheck else {
-                throw WatchRealtimeMediaFailure(kind: .network, message: "Voice has no ready media route.")
+                throw WatchRealtimeMediaFailure(
+                    kind: .network,
+                    message: String(localized: "Voice has no ready media route."))
             }
             let id = try (existing?.key ?? self.openFlow(.exact(route)))
             // Expired/superseded UDP checks are intentional non-sends; the ICE
@@ -423,7 +435,7 @@ final class WatchRealtimeTransport: @unchecked Sendable {
                 })
             return false
         }
-        if changed { self.flowFailed(id, message: "Voice changed its network address.") }
+        if changed { self.flowFailed(id, message: String(localized: "Voice changed its network address.")) }
     }
 
     private func receive(_ id: UUID) throws {
@@ -437,7 +449,8 @@ final class WatchRealtimeTransport: @unchecked Sendable {
                     guard error == nil, Self.matches(current.connection, route: route) else {
                         self.flowFailed(
                             id,
-                            message: error?.localizedDescription ?? "Voice changed its network address.")
+                            message: error?
+                                .localizedDescription ?? String(localized: "Voice changed its network address."))
                         return
                     }
                     do {
@@ -525,7 +538,7 @@ final class WatchRealtimeTransport: @unchecked Sendable {
 
     private static func nativeAddress(_ endpoint: NWEndpoint) throws -> OpenClawRTCAddress {
         guard case let .hostPort(host, port) = endpoint else {
-            throw WatchRealtimeMediaError.unavailable("Voice received an invalid network address.")
+            throw WatchRealtimeMediaError.unavailable(String(localized: "Voice received an invalid network address."))
         }
         let bytes: Data
         var result = OpenClawRTCAddress()
@@ -534,7 +547,8 @@ final class WatchRealtimeTransport: @unchecked Sendable {
             result.family = 4
         case let .ipv6(address): bytes = address.rawValue
             result.family = 6
-        default: throw WatchRealtimeMediaError.unavailable("Voice requires a resolved network address.")
+        default: throw WatchRealtimeMediaError
+            .unavailable(String(localized: "Voice requires a resolved network address."))
         }
         result.port = port.rawValue
         withUnsafeMutableBytes(of: &result.address) { $0.copyBytes(from: bytes) }
@@ -550,10 +564,10 @@ final class WatchRealtimeTransport: @unchecked Sendable {
         } else if address.family == 6, let ip = IPv6Address(data) {
             host = .ipv6(ip)
         } else {
-            throw WatchRealtimeMediaError.unavailable("Voice received an invalid network address.")
+            throw WatchRealtimeMediaError.unavailable(String(localized: "Voice received an invalid network address."))
         }
         guard let port = NWEndpoint.Port(rawValue: address.port) else {
-            throw WatchRealtimeMediaError.unavailable("Voice received an invalid network port.")
+            throw WatchRealtimeMediaError.unavailable(String(localized: "Voice received an invalid network port."))
         }
         return .hostPort(host: host, port: port)
     }
@@ -561,7 +575,8 @@ final class WatchRealtimeTransport: @unchecked Sendable {
     private static func localAddresses() throws -> [NWEndpoint] {
         var first: UnsafeMutablePointer<ifaddrs>?
         guard getifaddrs(&first) == 0 else {
-            throw WatchRealtimeMediaError.unavailable("Voice cannot read the active network addresses.")
+            throw WatchRealtimeMediaError
+                .unavailable(String(localized: "Voice cannot read the active network addresses."))
         }
         defer { if let first { freeifaddrs(first) } }
         var endpoints: [NWEndpoint] = []
