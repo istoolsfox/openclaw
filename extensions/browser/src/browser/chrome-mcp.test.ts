@@ -1,9 +1,12 @@
 // Browser tests cover chrome mcp plugin behavior.
+import { once } from "node:events";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
 import { MAX_TIMER_TIMEOUT_MS } from "openclaw/plugin-sdk/number-runtime";
+import { setLoggerOverride } from "openclaw/plugin-sdk/runtime-env";
 import { createOpenClawTestState } from "openclaw/plugin-sdk/test-state";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { normalizeChromeMcpOptions } from "./chrome-mcp-options.js";
@@ -1707,7 +1710,7 @@ describe("chrome MCP page parsing", () => {
     expect(closeMock).toHaveBeenCalledTimes(3);
   });
 
-  it("redacts remote CDP URL secrets from attach failures", async () => {
+  it("captures and redacts startup stderr when Chrome MCP initialization fails", async () => {
     const secretToken = "browserless-secret-token-1234567890"; // pragma: allowlist secret
     const user = "browser-user";
     const password = "browser-password-1234567890"; // pragma: allowlist secret
@@ -1723,6 +1726,7 @@ describe("chrome MCP page parsing", () => {
       fakeMcpCommand,
       `#!/usr/bin/env node
       const cdpUrl = process.argv.find((arg) => arg.includes("browserless.example")) ?? "";
+      process.stderr.write("startup diagnostic: " + cdpUrl + "\\n");
       let input = "";
       process.stdin.on("data", (chunk) => {
         input += chunk;
@@ -1739,6 +1743,21 @@ describe("chrome MCP page parsing", () => {
     );
     await fs.chmod(fakeMcpCommand, 0o755);
 
+    const start = StdioClientTransport.prototype.start;
+    // Observe stderr before the SDK sends initialize; separate pipes need not arrive in order.
+    using _start = vi
+      .spyOn(StdioClientTransport.prototype, "start")
+      .mockImplementation(async function (this: StdioClientTransport) {
+        const stderr = this.stderr;
+        if (!stderr) {
+          throw new Error("Expected piped Chrome MCP stderr");
+        }
+        const received = once(stderr, "data");
+        await start.call(this);
+        await received;
+      });
+    using warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    setLoggerOverride({ level: "silent", consoleLevel: "warn" });
     let message = "";
     try {
       await ensureChromeMcpAvailable(
@@ -1752,9 +1771,17 @@ describe("chrome MCP page parsing", () => {
     } catch (err) {
       message = err instanceof Error ? err.message : String(err);
     } finally {
+      setLoggerOverride(null);
       await openClawState.cleanup();
     }
 
+    const diagnostic = warn.mock.calls.flat().join("\n");
+    expect(diagnostic).toContain("startup diagnostic:");
+    expect(diagnostic).toContain("wss://browserless.example/chrome?token=***");
+    expect(diagnostic).not.toContain(cdpUrl);
+    expect(diagnostic).not.toContain(user);
+    expect(diagnostic).not.toContain(password);
+    expect(diagnostic).not.toContain(secretToken);
     expect(message).toContain("Chrome MCP existing-session attach failed");
     expect(message).toContain("attach failed");
     expect(message).toContain("browserless.example");
