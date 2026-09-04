@@ -341,7 +341,8 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +1: canonical temporal context renderer for plugin-owned agent harnesses.
       // +1: canonical user-turn operational metadata restoration for native harnesses.
       // +2: owner-selected channel groups and their authored config path for safe recovery hints.
-      4373,
+      // +1: final callable-tool availability projection for native harnesses.
+      4374,
       env,
     ),
     publicFunctionExports: readPluginSdkSurfaceBudgetEnv(
@@ -457,7 +458,8 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +1: canonical temporal context renderer for plugin-owned agent harnesses.
       // +1: canonical user-turn operational metadata restoration for native harnesses.
       // +2: owner-selected channel groups and their authored config path for safe recovery hints.
-      2607,
+      // +1: final callable-tool availability projection for native harnesses.
+      2608,
       env,
     ),
     publicDeprecatedExports: readPluginSdkSurfaceBudgetEnv(
