@@ -190,12 +190,12 @@ export async function listTaskRecordPage(params: {
       if (scannedCount >= scanLimit) {
         break;
       }
-      scannedCount += 1;
-      // Yield large scans in small deterministic slices so task history cannot
-      // monopolize the Gateway event loop while other requests are waiting.
-      if (scannedCount % 32 === 0) {
+      // Yield before another batch so history cannot monopolize the event loop,
+      // but a completed scan cannot be invalidated by unnecessary queued work.
+      if (scannedCount > 0 && scannedCount % 32 === 0) {
         await yieldToEventLoop();
       }
+      scannedCount += 1;
       if (
         (statuses && !statuses.has(task.status)) ||
         !taskMatchesAgent(task, agentId, params.cfg) ||
